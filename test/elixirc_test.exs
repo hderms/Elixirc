@@ -29,7 +29,7 @@ defmodule ElixircTest do
       UserList.add_user(agent,  "")
     end
   end
-test "The Userlist agent wont allow creation of a user with non-alpha characters" do
+  test "The Userlist agent wont allow creation of a user with non-alpha characters" do
     {:ok, agent} = UserList.start_link()
     assert_raise ArgumentError,fn ->
       UserList.add_user(agent,  "#*$")
@@ -53,7 +53,7 @@ test "The Userlist agent wont allow creation of a user with non-alpha characters
     assert [%User{nick: "bigboi"}]  = UserList.get(agent)
     assert :ok = UserList.remove_user(agent,  "Bigboi")
     assert []  = UserList.get(agent)
-{:ok, agent2} = UserList.start_link()
+    {:ok, agent2} = UserList.start_link()
     UserList.add_user(agent2,  "Bigboi")
     UserList.add_user(agent2,  "Dre")
     assert :ok = UserList.remove_user(agent2,  "Dre")

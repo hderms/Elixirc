@@ -6,7 +6,6 @@ defmodule Elixirc do
   @userlist_name Userlist
   def start(port \\4040) do
     import Supervisor.Spec
-
     children = [
                  supervisor(Task.Supervisor, [[name: Elixirc.TaskSupervisor]]),
                  worker(Task, [ChatServer, :accept, [port]]),
@@ -29,22 +28,27 @@ defmodule Elixirc do
 The User module is used to keep track of details regarding an individually registered user (registered presumably through 'nick' command)
 """
 
-    defstruct  operator: false, nick: "Guest", socket: nil
+    defstruct  operator: false, nick: "Guest", client: nil
+    @type t :: %User{nick: String.t, client: pid}
     def create("") do
       #empty nicks not permitted
       raise ArgumentError, message: "Empty nicks not permitted"
     end
-    def create(nick, socket) when is_bitstring(nick) do
+
+    @spec create(bitstring, pid) :: boolean  ;
+    def create(nick, client) when is_bitstring(nick) and is_pid(client) do
       if valid_nick?(nick)  do
         #initialize an empty user and then sanitize the nick
-        %User{socket: socket} |> sanitize_nick!(nick)
-      else 
-      raise ArgumentError, message: "Nick invalid"
+        %User{client: client} |> sanitize_nick!(nick)
+        true
+      else
+        false
       end
     end
     def valid_nick?(nick) when not is_bitstring(nick) do
       false
     end
+    @spec valid_nick?(bitstring) :: boolean
     def valid_nick?(nick) do
       Regex.match?(~r/^\w+$/, nick)
     end
@@ -52,6 +56,7 @@ The User module is used to keep track of details regarding an individually regis
       new_nick = nick |> format_nick
       %{user | nick: new_nick}
     end
+    @spec format_nick(String.t) :: String.t
     def format_nick(nick) do
       nick |> String.downcase |> String.rstrip
     end
@@ -74,6 +79,7 @@ The User list is in charge of abstracting access to given users
 
     defp push(agent, element) do
       Agent.update(agent, fn list -> [element | list] end)
+      true
     end
 
     def get(agent) do
@@ -84,17 +90,18 @@ The User list is in charge of abstracting access to given users
       raise ArgumentError, message: "User must have a nick"
     end
 
-    def add_user(agent,  nick, socket) do
-      new_user = User.create(nick, socket)
+    @spec add_user(atom, String.t, any) :: any
+    def add_user(agent,  nick, client) do
+      new_user = User.create(nick, client)
       push(agent, new_user)
     end
 
-    def change_nick(agent,new_nick, socket) do
+    @spec change_nick(atom, String.t, pid) :: any
+    def change_nick(agent,new_nick, client) do
       new_nick_formatted = User.format_nick(new_nick)
       Agent.update(agent, fn list ->
-                     user = Enum.find(list, &(&1.socket == socket))
+                     user = Enum.find(list, &(&1.client == client))
                      new_list = List.delete(list, user)
-                     IO.puts "Found user #{user.nick}"
                      new_user = %{user| nick: new_nick_formatted}
                      [new_user | new_list]
 
@@ -115,17 +122,17 @@ The User list is in charge of abstracting access to given users
                            end)
       Agent.update(agent, fn list -> List.delete(list, bad_user) end)
     end
-    def remove_user_by_socket(agent, socket) do
+    def remove_user_by_client(agent, client) do
       
       Agent.update(agent, fn list ->
-                     bad_user = Enum.find(list, &(&1.socket == socket))
+                     bad_user = Enum.find(list, &(&1.client == client))
                      List.delete(list, bad_user)
                    end)
     end
-    def fetch_user_by_socket(agent, socket) do
+    def fetch_user_by_client(agent, client) do
       
       Agent.get(agent, fn list ->
-                  Enum.find(list, &(&1.socket == socket))
+                  Enum.find(list, &(&1.client == client))
                 end)
     end
 
@@ -158,26 +165,23 @@ The chat server is in charge of accepting incoming connections and delegating th
         |> (&(Elixirc.CommandParser.parse &1, client)).()
         serve(client)
   end
-  defp read_line(socket) do
-    case :gen_tcp.recv(socket, 0) do
+  defp read_line(client) do
+    case :gen_tcp.recv(client, 0) do
       {:ok, data} ->  data
-      {:error, closed} -> UserList.remove_user_by_socket(:userlist, socket)
+      {:error, closed} -> UserList.remove_user_by_client(:userlist, client)
     end
   end
-  defp write_line(line, socket) do
-    :gen_tcp.send(socket, line)
+  defp write_line(line, client) do
+    :gen_tcp.send(client, line)
   end
-  def send_error(socket, message) do
-    write_line(message, socket)
+  def send_error(client, message) do
+    write_line(message, client)
   end
 end
 
 defmodule Elixirc.MessageRelay do
   alias Elixirc.User, as: User
   alias Elixirc.UserList, as: UserList
-  def send(_,  nil, message) do
-    {:error, "Error sending message"}
-  end
 
   def psend(_, %User{} = from, %User{} = to, message) do
     IO.puts(inspect(message))
@@ -185,11 +189,10 @@ defmodule Elixirc.MessageRelay do
     |> (&(Enum.join(&1, " "))).()
     |> String.rstrip
     Elixirc.ChatServer.
-    write_line( "#{from.nick} :  #{sanitized_message}", to.socket)
+    write_line( "#{from.nick} :  #{sanitized_message}\n", to.client)
   end
   def send_all(_, from, message) do
     users = UserList.get(:userlist) 
-          IO.puts(inspect(users))
           Enum.each(users, &(psend(nil,from,  &1, message)))
 
   end
@@ -197,36 +200,51 @@ end
 
 
 defmodule Elixirc.CommandParser do
+  alias Elixirc.UserList, as: UserList
   @moduledoc """
-The command parser is in charge of parsing incoming commands from clients and triggering the appropriate events to occur in response
-"""
-  def parse(line, socket) do
-    IO.puts(inspect(line))
-    split_lines = Regex.split(~r/ /, line) 
-                IO.puts(split_lines)
-                command = List.first(split_lines)
-                result =  case command do
-                            "nick" -> Elixirc.UserList.
-                            add_user(:userlist, List.last(split_lines), socket)
-                            "change_nick"
-                            -> Elixirc.UserList.
-                            change_nick(:userlist, List.last(split_lines), socket)
-                            "list" -> Elixirc.UserList.get(:userlist)
-                            |> Enum.map_join "\n", &(&1.nick) 
-                                   |> IO.puts
-                                   "msg" -> [head | rest] = split_lines
-                                   user = Elixirc.UserList.
-                                   fetch_user_by_socket(:userlist, socket)
-                                   #Elixirc.MessageRelay.send(:message_relay,user, rest)
-                                   Elixirc.MessageRelay.
-                                   send_all(:message_relay,user, rest)
-                                   
-                                   _ -> IO.puts "no match for #{command} "
-                          end
-                case result do
-                  {:error, message} -> Elixirc.ChatServer.send_error(socket, message)
-                  _ -> true
-                end
+    The command parser is in charge of parsing incoming commands from clients and triggering the appropriate events to occur in response
+  """
+  def parse(line, client) do
+    split_lines = Regex.split(~r/ /, line)  ;
+    command = List.first(split_lines)
+    #Perform the appropriate command based on the first
+    #word of input
+    result =  case command do
+                "nick" -> register_nick(split_lines, client)
+                "change_nick" -> change_nick(split_lines, client)
+                "list" -> list(split_lines, client)
+                "msg" -> msg(split_lines, client)
+                _ -> IO.puts "no match for #{command} "
+              end
+    case result do
+      #tell the client they have an error
+      {:error, message} -> Elixirc.ChatServer.send_error(client, message)
+      #otherwise just do nothing
+      {:ok, _ } -> true
+      _ -> true 
+    end
+  end
 
+  defp list(list, client) do
+    Elixirc.UserList.get(:userlist)
+    |> Enum.map_join "\n", &(&1.nick) 
+  end
+
+  defp change_nick(lines, client) do
+    UserList.change_nick(:userlist, List.last(lines), client)
+  end
+
+  defp msg(lines, client) do
+    [head | rest] = lines
+    user = UserList.
+    fetch_user_by_client(:userlist, client)
+    #Elixirc.MessageRelay.send(:message_relay,user, rest)
+    Elixirc.MessageRelay.
+    send_all(:message_relay,user, rest)
+  end
+
+  defp register_nick(lines, client) do
+    UserList.add_user(:userlist, List.last(lines), client)
   end
 end
+
