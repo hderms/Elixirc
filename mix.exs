@@ -4,7 +4,7 @@ defmodule Elixirc.Mixfile do
   def project do
     [app: :elixirc,
      version: "0.0.1",
-     elixir: "~> 0.14.3",
+     elixir: "> 1.0.0",
      deps: deps]
   end
 
@@ -25,6 +25,6 @@ defmodule Elixirc.Mixfile do
   #
   # Type `mix help deps` for more examples and options
   defp deps do
-    []
+    [{:uuid, "~>0.1.5"}]
   end
 end
