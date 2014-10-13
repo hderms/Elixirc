@@ -5,11 +5,22 @@ Elixirc is a simply exploration in creating a concurrent chat server which is in
 
 Commands
 ========
+
 "register foo" -> registers a user with nickname foo
+
+
 "change_nick bar" -> changes a users nick to bar, if they are already registered.
+
+
 "list" -> lists the users currently present
+
+
 "msg channel some message" -> sends "some message" to the channel "channel"
+
+
 "join foobar" -> joins the channel "foobar"
+
+
 
 Example usage=
 =======
