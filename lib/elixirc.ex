@@ -5,12 +5,15 @@ defmodule Elixirc do
   alias Elixirc.ConnectionHandler, as: ConnectionHandler
   alias Elixirc.ChannelList, as: ChannelList
   
+  #TODO: Break out these nested modules into separate files but keep
+  #the namespaces intact
+  @port 4040
   @userlist_name Userlist
-  def start(port \\4040) do
+  def start(_key, _agent) do
     import Supervisor.Spec
     children = [
                  supervisor(Task.Supervisor, [[name: Elixirc.TaskSupervisor]]),
-                 worker(Task, [ChatServer, :accept, [port]]),
+                 worker(Task, [ChatServer, :accept, [@port]]),
                  worker(Userlist, [[name: :userlist]]),
                  worker(ConnectionHandler, [[name: :connection_handler]]),
                  worker(ChannelList, [[name: :channel_list]]),

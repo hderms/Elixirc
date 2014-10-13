@@ -4,7 +4,7 @@ defmodule Elixirc.Mixfile do
   def project do
     [app: :elixirc,
      version: "0.0.1",
-     elixir: "> 1.0.0",
+     elixir: ">= 1.0.0",
      deps: deps]
   end
 
@@ -12,7 +12,7 @@ defmodule Elixirc.Mixfile do
   #
   # Type `mix help compile.app` for more information
   def application do
-    [applications: []]
+    [applications: [], mod: {Elixirc, []}]
   end
 
   # Dependencies can be hex.pm packages:
